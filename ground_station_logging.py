@@ -1,44 +1,83 @@
-
-
 import serial
 import time
 import tkinter as tk
 from PIL import ImageTk, Image
 import threading
+import numpy as np
 
 from tkinter import scrolledtext
+from datetime import datetime
 
 
 class App(tk.Tk):
     def __init__(self):
         tk.Tk.__init__(self)
+        self.width = 1500
+        self.height = 750
         self.title('Ground station Nebula')
         self.frame = Window(self)
-        self.frame.grid(column=0, row=0, columnspan=2)
-
-
+        self.frame.grid(column=0, row=0)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=1)
 
 class Window(tk.Frame):
     def __init__(self, master):
-        super().__init__(master, width=1000, height=500)
+        super().__init__(master)
         self.master = master
 
-        self.no_connection = ImageTk.PhotoImage(Image.open("sad.gif"))
-        self.connection = ImageTk.PhotoImage(Image.open("happy.gif"))
+        master.grid_rowconfigure(0, weight=1)
+        master.grid_rowconfigure(1, weight=0)
+        master.grid_rowconfigure(2, weight=1)
+        master.grid_columnconfigure(0, weight=1)
+        master.grid_columnconfigure(1, weight=1)
+        master.grid_columnconfigure(2, weight=1)
+        master.grid_columnconfigure(3, weight=1)
+
+        self.no_connection = ImageTk.PhotoImage(Image.open("images/no.gif").resize((master.width, master.height)))
+        self.connection = ImageTk.PhotoImage(Image.open("images/yes.gif").resize((master.width, master.height)))
 
         self.panel = tk.Label(master, image=self.no_connection)
-        self.panel.grid(column=0, row=0, columnspan=2)
+        self.panel.grid(column=0, row=0, columnspan=4, rowspan=3, sticky='nsew')
 
-        self.gps = tk.scrolledtext.ScrolledText(master)
-        self.gps.grid(column=0, row=0, padx=150, pady=150, sticky="ew")
+        self.gps = tk.scrolledtext.ScrolledText(master, height=25, width=50, state='disabled')
+        self.gps.grid(column=0, row=0, columnspan=2, rowspan=2, padx=(100, 50), pady=(75, 5), sticky="nsew")
 
-        self.altimeter = tk.scrolledtext.ScrolledText(master)
-        self.altimeter.grid(column=1, row=0, padx=150, pady=150, sticky="ew")
+        self.altimeter = tk.scrolledtext.ScrolledText(master, height=25, width=50, state='disabled')
+        self.altimeter.grid(column=2, row=0, columnspan=2, padx=(50, 100), pady=(75, 25), sticky="nsew")
+        self.altitudes = []
+
+        instantaneous_label = tk.Label(master, height=2, width=25, text='Instantaneous speed (m/s)', font=('menlo', 15))
+        instantaneous_label.grid(column=2, row=1, padx=(50, 5), pady=(5, 5), sticky='nsew')
+
+        average_label = tk.Label(master, height=2, width=25, text='Average speed (m/s)', font=('menlo', 15))
+        average_label.grid(column=3, row=1, padx=(5, 100), pady=(5, 5), sticky='nsew')
+        
+        self.instant_speed = tk.Label(master, height=5, width=25, text='', font=('menlo', 15))
+        self.instant_speed.grid(column=2, row=2, padx=(50, 5), pady=(5, 75), sticky='nsew')
+
+        self.average_speed = tk.Label(master, height=5, width=25, text='', font=('menlo', 15))
+        self.average_speed.grid(column=3, row=2, padx=(5, 100), pady=(5, 75), sticky='nsew')
+
+        start_frame = tk.Frame(master, height=12, width=150)
+        start_frame.pack_propagate(0)
+        start_frame.grid(column=1, row=2, padx=(5, 50), pady=(5, 75), sticky='nsew')
+
+        start_button = tk.Button(start_frame, text='Start', font=('menlo', 35), bg='red',
+                     command=self.start_count)
+        start_button.pack(fill="both", expand=True)
+        self.start = False
+        
+        tplus_frame = tk.Frame(master, height=12, width=500)
+        tplus_frame.pack_propagate(0)
+        tplus_frame.grid(column=0, row=2, padx=(100, 5), pady=(5, 75), sticky='nsew')
+
+        self.tplus = tk.Label(tplus_frame, text='Standby', fg='green', font=('menlo', 50))
+        self.tplus.pack(fill='both', expand=True)
 
         self.reception_thread = threading.Thread(target=self.check_reception)
-        self.reception_thread.daemon = True  # Daemonize the thread (it will exit when the main program exits)
+        self.reception_thread.daemon = True
         self.reception_thread.start()
-    
+
     def check_reception(self):
         serial_port = "COM10"   # Update this to your specific port (e.g., COM1 on Windows)
         baud_rate = 57600       # Set the baud rate to match your device's configuration
@@ -49,39 +88,102 @@ class Window(tk.Frame):
 
         while True:
             data = ser.readline().decode().strip()  # Read a line and decode it as a string
-            if data == "":
+            if data == "":      # Timeout
                 self.panel.configure(image=self.no_connection)
             else:
                 self.panel.configure(image=self.connection)
-                self.gps.insert("1.0", f"{data}\n")                
+                self.manage_data(data)
+                self.update_speeds()
+
+    def manage_data(self, data: str):
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]
+        stripped_data = data.split(' ')
+        if self.data_is_valid(stripped_data):
+            self.format_data(stripped_data, date)
+            self.altitudes.append([datetime.now(), float(stripped_data[10]) * 0.3048])
+        
+        save_file = open('logs.txt', 'a')
+        save_file.write(f'{date} -- {data}\n')
+        save_file.close()
+    
+    def data_is_valid(self, stripped_data: list):
+        right_len = len(stripped_data) == 12
+        right_elements = (stripped_data[0] == '&' and stripped_data[2] == '&' and stripped_data[5] == '&' 
+                          and stripped_data[8] == '&' and stripped_data[11] == '&')
+        return right_len and right_elements
+    
+    def format_data(self, stripped_data: list, date):
+        self.gps.insert("1.0", f'{date} -- Latitude: {stripped_data[4]}, Longitude {stripped_data[7]}\n')
+        self.altimeter.insert("1.0", f"{date} -- Altitude: {stripped_data[10]} ft\n")
+    
+    def update_speeds(self):
+        altitudes = np.array(self.altitudes)
+        
+        # Update the instant speed label first
+        time_delta = (altitudes[-1,0] - altitudes[-2,0]).total_seconds()
+        altitude_delta = altitudes[-1,1] - altitudes[-2,1]
+        self.instant_speed.config(text=(altitude_delta / time_delta))
+        
+        # Update the average speed label second
+        if altitudes.shape[0] >= 10:
+            deltas = altitudes[-10:,:] - altitudes[-11:-1,:]
+            average_speed = deltas[:,1] / np.vectorize(lambda dt: dt.total_seconds())(deltas[:,0])  
+            self.average_speed.config(text=(np.mean(average_speed)))
+
+    def start_count(self):
+        if not self.start:
+            self.start_time = time.time()
+            save_file = open('logs.txt', 'a')
+            writing_str = '-'*50 + f'\nLaunch at {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]}\n' \
+                            + '-'*50 + '\n'
+            save_file.write(writing_str)
+            save_file.close()
+            self.reception_thread = threading.Thread(target=self.count)
+            self.reception_thread.daemon = True
+            self.reception_thread.start()
+            self.start = True
+
+    def count(self):
+        seconds = 0
+        while True:
+            self.tplus.config(text=self.format_time(seconds))
+            time.sleep(1)
+            seconds += 1
+
+    def format_time(self, seconds):
+        hours, remainder = divmod(seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f'T+{hours:02d}:{minutes:02d}:{seconds:02d}'
+
+
 
 if __name__ == '__main__':
     app = App()
     app.mainloop()
 
+
+
 '''
-
-# Define the serial port and baud rate
-serial_port = "COM10"  # Update this to your specific port (e.g., COM1 on Windows)
-baud_rate = 57600  # Set the baud rate to match your device's configuration
-
-try:
-    # Create a serial object
-    ser = serial.Serial(serial_port, baud_rate)
-    # Read and print data from the serial port
-    while True:
-        data = ser.readline().decode().strip()  # Read a line and decode it as a string
-        print(data)
-        
-except KeyboardInterrupt:
-    print("Keyboard interrupt detected. Closing the serial connection.")
-except serial.SerialException as e:
-    print(f"An error occurred: {e}")
-finally:
-    try:
-        if ser.is_open:
-            ser.close()
-    except:
-        print('Over')
-        pass
+self.manage_data('& 502 & Lat: 48.476062 & Long: -81.336410 & alt: 1157.8 &')
+time.sleep(0.1)
+self.manage_data('& 503 & Lat: 49.476062 & Long: -82.336410 & alt: 1158.8 &')
+time.sleep(0.1)
+self.manage_data('& 504 & Lat: 49.476062 & Long: -82.336410 & alt: 1159.8 &')
+time.sleep(0.1)
+self.manage_data('& 505 & Lat: 49.476062 & Long: -82.336410 & alt: 1160.8 &')
+time.sleep(0.1)
+self.manage_data('& 506 & Lat: 49.476062 & Long: -82.336410 & alt: 1161.8 &')
+time.sleep(0.1)
+self.manage_data('& 507 & Lat: 49.476062 & Long: -82.336410 & alt: 1162.8 &')
+time.sleep(0.1)
+self.manage_data('& 508 & Lat: 49.476062 & Long: -82.336410 & alt: 1163.8 &')
+time.sleep(0.1)
+self.manage_data('& 509 & Lat: 49.476062 & Long: -82.336410 & alt: 1164.8 &')
+time.sleep(0.1)
+self.manage_data('& 510 & Lat: 49.476062 & Long: -82.336410 & alt: 1165.8 &')
+time.sleep(0.1)
+self.manage_data('& 511 & Lat: 49.476062 & Long: -82.336410 & alt: 1166.8 &')
+time.sleep(0.1)
+self.manage_data('& 512 & Lat: 49.476062 & Long: -82.336410 & alt: 1167.8 &')
+self.update_speeds()
 '''
