@@ -39,10 +39,10 @@ class Window(tk.Frame):
         self.panel = tk.Label(master, image=self.no_connection)
         self.panel.grid(column=0, row=0, columnspan=4, rowspan=3, sticky='nsew')
 
-        self.gps = tk.scrolledtext.ScrolledText(master, height=25, width=50, state='disabled')
+        self.gps = tk.scrolledtext.ScrolledText(master, height=25, width=50, state=tk.DISABLED)
         self.gps.grid(column=0, row=0, columnspan=2, rowspan=2, padx=(100, 50), pady=(75, 5), sticky="nsew")
 
-        self.altimeter = tk.scrolledtext.ScrolledText(master, height=25, width=50, state='disabled')
+        self.altimeter = tk.scrolledtext.ScrolledText(master, height=25, width=50, state=tk.DISABLED)
         self.altimeter.grid(column=2, row=0, columnspan=2, padx=(50, 100), pady=(75, 25), sticky="nsew")
         self.altitudes = []
 
@@ -58,20 +58,20 @@ class Window(tk.Frame):
         self.average_speed = tk.Label(master, height=5, width=25, text='', font=('menlo', 15))
         self.average_speed.grid(column=3, row=2, padx=(5, 100), pady=(5, 75), sticky='nsew')
 
-        start_frame = tk.Frame(master, height=12, width=150)
+        start_frame = tk.Frame(master, height=12, width=250)
         start_frame.pack_propagate(0)
         start_frame.grid(column=1, row=2, padx=(5, 50), pady=(5, 75), sticky='nsew')
 
-        start_button = tk.Button(start_frame, text='Start', font=('menlo', 35), bg='red',
+        start_button = tk.Button(start_frame, text='LAUNCH', font=('menlo', 35), bg='red',
                      command=self.start_count)
         start_button.pack(fill="both", expand=True)
         self.start = False
         
-        tplus_frame = tk.Frame(master, height=12, width=500)
+        tplus_frame = tk.Frame(master, height=12, width=400)
         tplus_frame.pack_propagate(0)
         tplus_frame.grid(column=0, row=2, padx=(100, 5), pady=(5, 75), sticky='nsew')
 
-        self.tplus = tk.Label(tplus_frame, text='Standby', fg='green', font=('menlo', 50))
+        self.tplus = tk.Label(tplus_frame, text='STANDBY', fg='green', font=('menlo', 50))
         self.tplus.pack(fill='both', expand=True)
 
         self.reception_thread = threading.Thread(target=self.check_reception)
@@ -98,10 +98,11 @@ class Window(tk.Frame):
     def manage_data(self, data: str):
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]
         stripped_data = data.split(' ')
-        if self.data_is_valid(stripped_data):
-            self.format_data(stripped_data, date)
-            self.altitudes.append([datetime.now(), float(stripped_data[10]) * 0.3048])
-        
+        if int(stripped_data[1]) % 2 == 0:      # Remove half the data
+            if self.data_is_valid(stripped_data):
+                self.format_data(stripped_data, date)
+                self.altitudes.append([datetime.now(), float(stripped_data[10]) * 0.3048])
+            
         save_file = open('logs.txt', 'a')
         save_file.write(f'{date} -- {data}\n')
         save_file.close()
@@ -113,35 +114,41 @@ class Window(tk.Frame):
         return right_len and right_elements
     
     def format_data(self, stripped_data: list, date):
+        self.gps.config(state=tk.NORMAL)
         self.gps.insert("1.0", f'{date} -- Latitude: {stripped_data[4]}, Longitude {stripped_data[7]}\n')
+        self.gps.config(state=tk.DISABLED)
+
+        self.altimeter.config(state=tk.NORMAL)
         self.altimeter.insert("1.0", f"{date} -- Altitude: {stripped_data[10]} ft\n")
+        self.altimeter.config(state=tk.DISABLED)
     
     def update_speeds(self):
         altitudes = np.array(self.altitudes)
-        
+            
         # Update the instant speed label first
-        time_delta = (altitudes[-1,0] - altitudes[-2,0]).total_seconds()
-        altitude_delta = altitudes[-1,1] - altitudes[-2,1]
-        self.instant_speed.config(text=(altitude_delta / time_delta))
+        if altitudes.shape[0] >= 2:
+            time_delta = (altitudes[-1,0] - altitudes[-2,0]).total_seconds()
+            altitude_delta = altitudes[-1,1] - altitudes[-2,1]
+            self.instant_speed.config(text=round(altitude_delta / time_delta, 2))
         
         # Update the average speed label second
-        if altitudes.shape[0] >= 10:
+        if altitudes.shape[0] >= 11:
             deltas = altitudes[-10:,:] - altitudes[-11:-1,:]
             average_speed = deltas[:,1] / np.vectorize(lambda dt: dt.total_seconds())(deltas[:,0])  
-            self.average_speed.config(text=(np.mean(average_speed)))
+            self.average_speed.config(text=round(np.mean(average_speed), 2))
 
     def start_count(self):
         if not self.start:
-            self.start_time = time.time()
+            self.start = True
             save_file = open('logs.txt', 'a')
             writing_str = '-'*50 + f'\nLaunch at {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]}\n' \
                             + '-'*50 + '\n'
             save_file.write(writing_str)
             save_file.close()
+
             self.reception_thread = threading.Thread(target=self.count)
             self.reception_thread.daemon = True
             self.reception_thread.start()
-            self.start = True
 
     def count(self):
         seconds = 0
