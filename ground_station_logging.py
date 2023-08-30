@@ -24,6 +24,7 @@ class Window(tk.Frame):
     def __init__(self, master):
         super().__init__(master)
         self.master = master
+        self.current_log_name = f'{datetime.now().strftime("%Y-%m-%d %Hh%Mm%Ss")}.txt'
 
         master.grid_rowconfigure(0, weight=1)
         master.grid_rowconfigure(1, weight=0)
@@ -44,7 +45,7 @@ class Window(tk.Frame):
 
         self.altimeter = tk.scrolledtext.ScrolledText(master, height=25, width=50, state=tk.DISABLED)
         self.altimeter.grid(column=2, row=0, columnspan=2, padx=(50, 100), pady=(75, 25), sticky="nsew")
-        self.altitudes = []
+        self.altitudes = []             # Altitudes are directly stored in meters
 
         instantaneous_label = tk.Label(master, height=2, width=25, text='Instantaneous speed (m/s)', font=('menlo', 15))
         instantaneous_label.grid(column=2, row=1, padx=(50, 5), pady=(5, 5), sticky='nsew')
@@ -79,6 +80,9 @@ class Window(tk.Frame):
         self.reception_thread.start()
 
     def check_reception(self):
+        '''
+        Check constantly if data is being received.
+        '''
         serial_port = "COM10"   # Update this to your specific port (e.g., COM1 on Windows)
         baud_rate = 57600       # Set the baud rate to match your device's configuration
         
@@ -92,28 +96,37 @@ class Window(tk.Frame):
                 self.panel.configure(image=self.no_connection)
             else:
                 self.panel.configure(image=self.connection)
-                self.manage_data(data)
+                self.manage_received_data(data)
                 self.update_speeds()
 
-    def manage_data(self, data: str):
+    def manage_received_data(self, data: str):
+        '''
+        Store the received data in the logs.txt file and if the data is valid, display on the scrolledtext widgets.
+        '''
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]
         stripped_data = data.split(' ')
         if int(stripped_data[1]) % 2 == 0:      # Remove half the data
             if self.data_is_valid(stripped_data):
-                self.format_data(stripped_data, date)
+                self.update_scrolledtext_with_serial_data(stripped_data, date)
                 self.altitudes.append([datetime.now(), float(stripped_data[10]) * 0.3048])
             
-        save_file = open('logs.txt', 'a')
+        save_file = open(self.current_log_name, 'a')
         save_file.write(f'{date} -- {data}\n')
         save_file.close()
     
     def data_is_valid(self, stripped_data: list):
+        '''
+        Check if the data received by serial is valid.
+        '''
         right_len = len(stripped_data) == 12
         right_elements = (stripped_data[0] == '&' and stripped_data[2] == '&' and stripped_data[5] == '&' 
                           and stripped_data[8] == '&' and stripped_data[11] == '&')
         return right_len and right_elements
     
-    def format_data(self, stripped_data: list, date):
+    def update_scrolledtext_with_serial_data(self, stripped_data: list, date):
+        '''
+        Update the scrolledtext widgets by making use of the serial data.
+        '''
         self.gps.config(state=tk.NORMAL)
         self.gps.insert("1.0", f'{date} -- Latitude: {stripped_data[4]}, Longitude {stripped_data[7]}\n')
         self.gps.config(state=tk.DISABLED)
@@ -123,6 +136,9 @@ class Window(tk.Frame):
         self.altimeter.config(state=tk.DISABLED)
     
     def update_speeds(self):
+        '''
+        Update the two speed values.
+        '''
         altitudes = np.array(self.altitudes)
             
         # Update the instant speed label first
@@ -138,9 +154,12 @@ class Window(tk.Frame):
             self.average_speed.config(text=round(np.mean(average_speed), 2))
 
     def start_count(self):
+        '''
+        Initialize the time counter.
+        '''
         if not self.start:
             self.start = True
-            save_file = open('logs.txt', 'a')
+            save_file = open(self.current_log_name, 'a')
             writing_str = '-'*50 + f'\nLaunch at {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]}\n' \
                             + '-'*50 + '\n'
             save_file.write(writing_str)
@@ -151,6 +170,9 @@ class Window(tk.Frame):
             self.reception_thread.start()
 
     def count(self):
+        '''
+        Count the seconds since count initialization.
+        '''
         seconds = 0
         while True:
             self.tplus.config(text=self.format_time(seconds))
@@ -158,6 +180,9 @@ class Window(tk.Frame):
             seconds += 1
 
     def format_time(self, seconds):
+        '''
+        Format the number of seconds into hh:mm:ss format.
+        '''
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f'T+{hours:02d}:{minutes:02d}:{seconds:02d}'
@@ -171,26 +196,26 @@ if __name__ == '__main__':
 
 
 '''
-self.manage_data('& 502 & Lat: 48.476062 & Long: -81.336410 & alt: 1157.8 &')
+self.manage_received_data('& 502 & Lat: 48.476062 & Long: -81.336410 & alt: 1157.8 &')
 time.sleep(0.1)
-self.manage_data('& 503 & Lat: 49.476062 & Long: -82.336410 & alt: 1158.8 &')
+self.manage_received_data('& 503 & Lat: 49.476062 & Long: -82.336410 & alt: 1158.8 &')
 time.sleep(0.1)
-self.manage_data('& 504 & Lat: 49.476062 & Long: -82.336410 & alt: 1159.8 &')
+self.manage_received_data('& 504 & Lat: 49.476062 & Long: -82.336410 & alt: 1159.8 &')
 time.sleep(0.1)
-self.manage_data('& 505 & Lat: 49.476062 & Long: -82.336410 & alt: 1160.8 &')
+self.manage_received_data('& 505 & Lat: 49.476062 & Long: -82.336410 & alt: 1160.8 &')
 time.sleep(0.1)
-self.manage_data('& 506 & Lat: 49.476062 & Long: -82.336410 & alt: 1161.8 &')
+self.manage_received_data('& 506 & Lat: 49.476062 & Long: -82.336410 & alt: 1161.8 &')
 time.sleep(0.1)
-self.manage_data('& 507 & Lat: 49.476062 & Long: -82.336410 & alt: 1162.8 &')
+self.manage_received_data('& 507 & Lat: 49.476062 & Long: -82.336410 & alt: 1162.8 &')
 time.sleep(0.1)
-self.manage_data('& 508 & Lat: 49.476062 & Long: -82.336410 & alt: 1163.8 &')
+self.manage_received_data('& 508 & Lat: 49.476062 & Long: -82.336410 & alt: 1163.8 &')
 time.sleep(0.1)
-self.manage_data('& 509 & Lat: 49.476062 & Long: -82.336410 & alt: 1164.8 &')
+self.manage_received_data('& 509 & Lat: 49.476062 & Long: -82.336410 & alt: 1164.8 &')
 time.sleep(0.1)
-self.manage_data('& 510 & Lat: 49.476062 & Long: -82.336410 & alt: 1165.8 &')
+self.manage_received_data('& 510 & Lat: 49.476062 & Long: -82.336410 & alt: 1165.8 &')
 time.sleep(0.1)
-self.manage_data('& 511 & Lat: 49.476062 & Long: -82.336410 & alt: 1166.8 &')
+self.manage_received_data('& 511 & Lat: 49.476062 & Long: -82.336410 & alt: 1166.8 &')
 time.sleep(0.1)
-self.manage_data('& 512 & Lat: 49.476062 & Long: -82.336410 & alt: 1167.8 &')
+self.manage_received_data('& 512 & Lat: 49.476062 & Long: -82.336410 & alt: 1167.8 &')
 self.update_speeds()
 '''
