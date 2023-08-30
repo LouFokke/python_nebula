@@ -38,33 +38,37 @@ class Window(tk.Frame):
         self.connection = ImageTk.PhotoImage(Image.open("images/yes.gif").resize((master.width, master.height)))
 
         self.panel = tk.Label(master, image=self.no_connection)
-        self.panel.grid(column=0, row=0, columnspan=4, rowspan=3, sticky='nsew')
+        self.panel.grid(column=0, row=0, columnspan=5, rowspan=3, sticky='nsew')
 
         self.gps = tk.scrolledtext.ScrolledText(master, height=25, width=50, state=tk.DISABLED)
         self.gps.grid(column=0, row=0, columnspan=2, rowspan=2, padx=(100, 50), pady=(75, 5), sticky="nsew")
 
         self.altimeter = tk.scrolledtext.ScrolledText(master, height=25, width=50, state=tk.DISABLED)
-        self.altimeter.grid(column=2, row=0, columnspan=2, padx=(50, 100), pady=(75, 25), sticky="nsew")
-        self.altitudes = []             # Altitudes are directly stored in meters
+        self.altimeter.grid(column=2, row=0, columnspan=2, padx=(50, 5), pady=(75, 25), sticky="nsew")
+        self.altitudes = []             # Altitudes are stored in feet
+
+        self.flight_altitude = tk.scrolledtext.ScrolledText(master, height=25, width=20, state=tk.DISABLED, fg='green')
+        self.flight_altitude.grid(column=4, row=0, padx=(5, 100), pady=(75, 25), sticky='nsew')
+        self.start_altitude = None
 
         instantaneous_label = tk.Label(master, height=2, width=25, text='Instantaneous speed (m/s)', font=('menlo', 15))
         instantaneous_label.grid(column=2, row=1, padx=(50, 5), pady=(5, 5), sticky='nsew')
 
         average_label = tk.Label(master, height=2, width=25, text='Average speed (m/s)', font=('menlo', 15))
-        average_label.grid(column=3, row=1, padx=(5, 100), pady=(5, 5), sticky='nsew')
+        average_label.grid(column=3, row=1, columnspan=2, padx=(5, 100), pady=(5, 5), sticky='nsew')
         
         self.instant_speed = tk.Label(master, height=5, width=25, text='', font=('menlo', 15))
         self.instant_speed.grid(column=2, row=2, padx=(50, 5), pady=(5, 75), sticky='nsew')
 
         self.average_speed = tk.Label(master, height=5, width=25, text='', font=('menlo', 15))
-        self.average_speed.grid(column=3, row=2, padx=(5, 100), pady=(5, 75), sticky='nsew')
+        self.average_speed.grid(column=3, row=2, columnspan=2, padx=(5, 100), pady=(5, 75), sticky='nsew')
 
         start_frame = tk.Frame(master, height=12, width=250)
         start_frame.pack_propagate(0)
         start_frame.grid(column=1, row=2, padx=(5, 50), pady=(5, 75), sticky='nsew')
 
         start_button = tk.Button(start_frame, text='LAUNCH', font=('menlo', 35), bg='red',
-                     command=self.start_count)
+                     command=self.launch)
         start_button.pack(fill="both", expand=True)
         self.start = False
         
@@ -97,7 +101,6 @@ class Window(tk.Frame):
             else:
                 self.panel.configure(image=self.connection)
                 self.manage_received_data(data)
-                self.update_speeds()
 
     def manage_received_data(self, data: str):
         '''
@@ -105,10 +108,11 @@ class Window(tk.Frame):
         '''
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]
         stripped_data = data.split(' ')
-        if int(stripped_data[1]) % 2 == 0:      # Remove half the data
-            if self.data_is_valid(stripped_data):
-                self.update_scrolledtext_with_serial_data(stripped_data, date)
-                self.altitudes.append([datetime.now(), float(stripped_data[10]) * 0.3048])
+        # if int(stripped_data[1]) % 2 == 0:      # Remove half the data
+        if self.data_is_valid(stripped_data):
+            self.update_scrolledtext_with_serial_data(stripped_data, date)
+            self.altitudes.append([datetime.now(), float(stripped_data[10])])
+            self.update_speeds()
             
         save_file = open(self.current_log_name, 'a')
         save_file.write(f'{date} -- {data}\n')
@@ -134,12 +138,24 @@ class Window(tk.Frame):
         self.altimeter.config(state=tk.NORMAL)
         self.altimeter.insert("1.0", f"{date} -- Altitude: {stripped_data[10]} ft\n")
         self.altimeter.config(state=tk.DISABLED)
+
+        if self.start_altitude is not None:
+            if self.altitudes[-1][1] - self.altitudes[-2][1] >= 0:
+                color = "green" 
+            else:
+                color = "red"
+
+            self.flight_altitude.config(state=tk.NORMAL)
+            self.flight_altitude.tag_configure(color, foreground=color)
+            self.flight_altitude.insert("1.0", f"{float(stripped_data[10]) - self.start_altitude} ft\n", (color,))
+            self.flight_altitude.config(state=tk.DISABLED)
     
     def update_speeds(self):
         '''
         Update the two speed values.
         '''
-        altitudes = np.array(self.altitudes)
+        raw_altitudes = np.array(self.altitudes)
+        altitudes = np.stack((raw_altitudes[:,0], raw_altitudes[:,1]*0.3048), axis=1)
             
         # Update the instant speed label first
         if altitudes.shape[0] >= 2:
@@ -153,12 +169,13 @@ class Window(tk.Frame):
             average_speed = deltas[:,1] / np.vectorize(lambda dt: dt.total_seconds())(deltas[:,0])  
             self.average_speed.config(text=round(np.mean(average_speed), 2))
 
-    def start_count(self):
+    def launch(self):
         '''
-        Initialize the time counter.
+        Initialize the time counter and set the start altitude.
         '''
         if not self.start:
             self.start = True
+            self.start_altitude = self.altitudes[-1][1]
             save_file = open(self.current_log_name, 'a')
             writing_str = '-'*50 + f'\nLaunch at {datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]}\n' \
                             + '-'*50 + '\n'
