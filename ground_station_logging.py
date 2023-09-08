@@ -108,7 +108,6 @@ class Window(tk.Frame):
         '''
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-5]
         stripped_data = data.split(' ')
-        # if int(stripped_data[1]) % 2 == 0:      # Remove half the data
         if self.data_is_valid(stripped_data):
             self.update_scrolledtext_with_serial_data(stripped_data, date)
             self.altitudes.append([datetime.now(), float(stripped_data[10])])
@@ -209,30 +208,3 @@ class Window(tk.Frame):
 if __name__ == '__main__':
     app = App()
     app.mainloop()
-
-
-
-'''
-self.manage_received_data('& 502 & Lat: 48.476062 & Long: -81.336410 & alt: 1157.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 503 & Lat: 49.476062 & Long: -82.336410 & alt: 1158.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 504 & Lat: 49.476062 & Long: -82.336410 & alt: 1159.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 505 & Lat: 49.476062 & Long: -82.336410 & alt: 1160.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 506 & Lat: 49.476062 & Long: -82.336410 & alt: 1161.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 507 & Lat: 49.476062 & Long: -82.336410 & alt: 1162.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 508 & Lat: 49.476062 & Long: -82.336410 & alt: 1163.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 509 & Lat: 49.476062 & Long: -82.336410 & alt: 1164.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 510 & Lat: 49.476062 & Long: -82.336410 & alt: 1165.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 511 & Lat: 49.476062 & Long: -82.336410 & alt: 1166.8 &')
-time.sleep(0.1)
-self.manage_received_data('& 512 & Lat: 49.476062 & Long: -82.336410 & alt: 1167.8 &')
-self.update_speeds()
-'''
